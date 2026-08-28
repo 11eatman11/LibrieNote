@@ -2,7 +2,7 @@ ARG NUSQLITE3_DIR="/usr/local/lib/nusqlite3"
 ARG NUSQLITE3_PATH="${NUSQLITE3_DIR}/libnusqlite3.so"
 
 ### STAGE 0: Build client ###
-FROM node:20-alpine AS build-client
+FROM node:24-alpine AS build-client
 
 WORKDIR /client
 COPY /client /client
@@ -10,7 +10,7 @@ RUN npm ci && npm cache clean --force
 RUN npm run generate
 
 ### STAGE 1: Build server ###
-FROM node:20-alpine AS build-server
+FROM node:24-alpine AS build-server
 
 ARG NUSQLITE3_DIR
 ARG TARGETPLATFORM
@@ -25,7 +25,8 @@ RUN apk add --no-cache --update \
   unzip
 
 WORKDIR /server
-COPY index.js package* /server
+COPY index.js package* tsconfig.server.json /server
+COPY /scripts /server/scripts
 COPY /server /server/server
 
 RUN case "$TARGETPLATFORM" in \
@@ -38,10 +39,10 @@ RUN case "$TARGETPLATFORM" in \
   unzip /tmp/library.zip -d $NUSQLITE3_DIR && \
   rm /tmp/library.zip
 
-RUN npm ci --only=production
+RUN npm ci --include=dev && npm run build:server && npm prune --omit=dev && rm -rf dist-server/test
 
 ### STAGE 2: Create minimal runtime image ###
-FROM node:20-alpine
+FROM node:24-alpine
 
 ARG NUSQLITE3_DIR
 ARG NUSQLITE3_PATH
@@ -70,4 +71,4 @@ ENV NUSQLITE3_DIR=${NUSQLITE3_DIR}
 ENV NUSQLITE3_PATH=${NUSQLITE3_PATH}
 
 ENTRYPOINT ["tini", "--"]
-CMD ["node", "index.js"]
+CMD ["node", "dist-server/index.js"]

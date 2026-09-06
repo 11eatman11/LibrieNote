@@ -4,7 +4,7 @@ const Logger = require('../Logger')
 const SocketAuthority = require('../SocketAuthority')
 const Database = require('../Database')
 const { sort } = require('../libs/fastSort')
-const { toNumber, isNullOrNaN, isUUID } = require('../utils/index')
+const { toNumber, isNullOrNaN, isJsonObject, isUUID } = require('../utils/index')
 const userStats = require('../utils/queries/userStats')
 const parseUserAgent = require('../utils/parsers/parseUserAgent')
 
@@ -652,6 +652,39 @@ class MeController {
     }
     const data = await userStats.getStatsForYear(req.user.id, year)
     res.json(data)
+  }
+
+  /**
+   * PATCH: /api/me/client-settings/:clientId
+   *
+   * Partial update of one clients settings. Null removes a setting.
+   * The clientId namespace is not private, so settings are for preferences, not sensitive data.
+   *
+   * @param {RequestWithUser} req
+   * @param {Response} res
+   */
+  async updateClientSettings(req, res) {
+    const settings = req.body
+    if (!isJsonObject(settings)) {
+      return res.status(400).send('Invalid payload. Client settings object required')
+    }
+
+    const clientId = req.params.clientId
+    const validationError = Database.userModel.validateClientSettings(clientId, settings, req.user.clientSettings)
+    if (validationError) {
+      Logger.error(`[MeController] updateClientSettings invalid payload from user "${req.user.username}": ${validationError}`)
+      return res.status(400).send(validationError)
+    }
+
+    const hasUpdates = await req.user.updateClientSettings(clientId, settings)
+    if (hasUpdates) {
+      SocketAuthority.clientEmitter(req.user.id, 'user_updated', req.user.toOldJSONForBrowser())
+    }
+
+    res.json({
+      clientId,
+      settings: req.user.clientSettings[clientId] || {}
+    })
   }
 }
 module.exports = new MeController()

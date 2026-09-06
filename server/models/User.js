@@ -4,7 +4,7 @@ const { LRUCache } = require('lru-cache')
 
 const Logger = require('../Logger')
 const SocketAuthority = require('../SocketAuthority')
-const { isNullOrNaN } = require('../utils')
+const { areEquivalent, isNullOrNaN, jsonByteLength } = require('../utils')
 const TokenManager = require('../auth/TokenManager')
 
 class UserCache {
@@ -118,6 +118,23 @@ class User extends Model {
 
   // Excludes "root" since their can only be 1 root user
   static accountTypes = ['admin', 'user', 'guest']
+
+  /** Clients name their own settings, so only structure and size are bounded */
+  static clientSettingsLimits = {
+    maxBytesPerClient: 2048,
+    maxBytes: 25600,
+    maxKeys: 64,
+    maxClients: 12,
+    maxStringLength: 1024
+  }
+
+  /** Ids are public, self asserted, and appear in the request path, so they must stay url safe */
+  static clientIdPattern = /^[a-zA-Z][a-zA-Z0-9._-]{0,63}$/
+
+  static clientSettingKeyPattern = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/
+
+  /** Rejected as client ids and setting names, independently of the patterns above */
+  static unsafeObjectKeys = ['__proto__', 'constructor', 'prototype']
 
   /**
    * List of expected permission properties from the client
@@ -573,6 +590,10 @@ class User extends Model {
   get authOpenIDSub() {
     return this.extraData?.authOpenIDSub || null
   }
+  /** @type {Object} */
+  get clientSettings() {
+    return this.extraData?.clientSettings || {}
+  }
 
   /**
    * User data for clients
@@ -620,6 +641,7 @@ class User extends Model {
       isOldToken: this.isOldToken,
       mediaProgress: this.mediaProgresses?.map((mp) => mp.getOldMediaProgress()) || [],
       seriesHideFromContinueListening: [...seriesHideFromContinueListening],
+      clientSettings: { ...this.clientSettings },
       bookmarks: this.bookmarks?.map((b) => ({ ...b })) || [],
       isActive: this.isActive,
       isLocked: this.isLocked,
@@ -908,6 +930,126 @@ class User extends Model {
     }
     this.bookmarks = this.bookmarks.filter((bm) => bm.libraryItemId !== libraryItemId || bm.time !== time)
     this.changed('bookmarks', true)
+    await this.save()
+    return true
+  }
+
+  /**
+   * Validate one setting value, which must be a primitive
+   *
+   * @param {*} value
+   * @returns {string|null} error message, or null when the value is valid
+   */
+  static validateClientSettingValue(value) {
+    const limits = User.clientSettingsLimits
+
+    if (typeof value === 'boolean') return null
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) return 'must be a finite number'
+      if (Math.abs(value) > Number.MAX_SAFE_INTEGER) return 'number is out of range'
+      return null
+    }
+    if (typeof value === 'string') {
+      if (Buffer.byteLength(value, 'utf8') > limits.maxStringLength) return `string exceeds ${limits.maxStringLength} bytes`
+      return null
+    }
+
+    return 'must be a string, number or boolean'
+  }
+
+  /**
+   * Validate a client id, which is public and self asserted so only shape is checked
+   *
+   * @param {*} clientId
+   * @returns {string|null} error message, or null when the id is valid
+   */
+  static validateClientId(clientId) {
+    if (!clientId || typeof clientId !== 'string') return 'Client id is required'
+    if (User.unsafeObjectKeys.includes(clientId)) return `Client id "${clientId}" is reserved`
+    if (!User.clientIdPattern.test(clientId)) return 'Client id must start with a letter and may contain letters, digits, . _ or -, up to 64 characters'
+    return null
+  }
+
+  /**
+   * Validate a settings payload. Fails closed: one bad key or value rejects the whole request
+   *
+   * @param {string} clientId id of the client storing the settings
+   * @param {Object} settings JSON containing client settings
+   * @param {Object} [currentStore] the full client settings store for the user
+   * @returns {string|null} error message, or null when the payload is valid
+   */
+  static validateClientSettings(clientId, settings, currentStore = {}) {
+    const limits = User.clientSettingsLimits
+
+    const clientIdError = User.validateClientId(clientId)
+    if (clientIdError) return clientIdError
+
+    const keys = Object.keys(settings)
+    if (!keys.length) return 'At least one client setting is required'
+    if (keys.length > limits.maxKeys) return `A client cannot store more than ${limits.maxKeys} settings`
+
+    for (const key of keys) {
+      if (User.unsafeObjectKeys.includes(key)) return `Client setting name "${key}" is reserved`
+      if (!User.clientSettingKeyPattern.test(key)) return `Invalid client setting name "${key}"`
+
+      if (settings[key] === null) continue
+
+      const valueError = User.validateClientSettingValue(settings[key])
+      if (valueError) return `Invalid value for client setting "${key}": ${valueError}`
+    }
+
+    // Checked against the merged result so many small requests cannot creep past the limits
+    const merged = User.mergeClientSettings(currentStore, clientId, settings)
+    const clientBag = merged[clientId] || {}
+
+    if (Object.keys(clientBag).length > limits.maxKeys) return `A client cannot store more than ${limits.maxKeys} settings`
+    if (Object.keys(merged).length > limits.maxClients) return `Client settings cannot be stored for more than ${limits.maxClients} clients`
+    if (jsonByteLength(clientBag) > limits.maxBytesPerClient) return `Client settings cannot exceed ${limits.maxBytesPerClient} bytes per client`
+    if (jsonByteLength(merged) > limits.maxBytes) return `Client settings cannot exceed ${limits.maxBytes} bytes`
+
+    return null
+  }
+
+  /**
+   * Merge a payload into one clients settings. A null value removes a setting
+   *
+   * @param {Object} currentStore the full client settings store
+   * @param {string} clientId
+   * @param {Object} settings
+   * @returns {Object} the updated store
+   */
+  static mergeClientSettings(currentStore, clientId, settings) {
+    // Spread never invokes a setter, so this cannot be used to mutate a prototype
+    const store = { ...currentStore }
+    const clientBag = { ...store[clientId] }
+
+    for (const [key, value] of Object.entries(settings)) {
+      if (value === null) delete clientBag[key]
+      else clientBag[key] = value
+    }
+
+    if (Object.keys(clientBag).length) store[clientId] = clientBag
+    else delete store[clientId]
+
+    return store
+  }
+
+  /**
+   * Save validated settings to extraData.clientSettings, leaving other extraData keys alone
+   *
+   * @param {string} clientId id of the client storing the settings
+   * @param {Object} settings validated client settings
+   * @returns {Promise<boolean>} true if any setting was changed
+   */
+  async updateClientSettings(clientId, settings) {
+    const currentStore = this.clientSettings
+    const updatedStore = User.mergeClientSettings(currentStore, clientId, settings)
+
+    if (areEquivalent(updatedStore, currentStore)) return false
+
+    if (!this.extraData) this.extraData = {}
+    this.extraData.clientSettings = updatedStore
+    this.changed('extraData', true)
     await this.save()
     return true
   }

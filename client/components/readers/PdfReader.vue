@@ -1,29 +1,35 @@
 <template>
   <div class="w-full h-full pt-20 relative">
-    <div v-show="canGoPrev" class="absolute top-0 left-0 h-full w-1/2 hover:opacity-100 opacity-0 z-10 cursor-pointer" @click.stop.prevent="prev" @mousedown.prevent>
+    <div v-show="canGoPrev" class="absolute top-0 left-0 h-full w-1/2 hover:opacity-100 opacity-0 z-40 pointer-events-auto cursor-pointer" @click.stop.prevent="prev" @mousedown.prevent>
       <div class="flex items-center justify-center h-full w-1/2">
         <span class="material-symbols text-5xl text-white/30 cursor-pointer hover:text-white/90">arrow_back_ios</span>
       </div>
     </div>
-    <div v-show="canGoNext" class="absolute top-0 right-0 h-full w-1/2 hover:opacity-100 opacity-0 z-10 cursor-pointer" @click.stop.prevent="next" @mousedown.prevent>
+    <div v-show="canGoNext" class="absolute top-0 right-0 h-full w-1/2 hover:opacity-100 opacity-0 z-40 pointer-events-auto cursor-pointer" @click.stop.prevent="next" @mousedown.prevent>
       <div class="flex items-center justify-center h-full w-1/2 ml-auto">
         <span class="material-symbols text-5xl text-white/30 cursor-pointer hover:text-white/90">arrow_forward_ios</span>
       </div>
     </div>
 
-    <div class="absolute top-0 right-20 bg-bg text-gray-100 border-b border-l border-r border-gray-400 z-20 rounded-b-md px-2 h-9 hidden md:flex items-center text-center">
+    <div class="absolute top-0 right-20 bg-bg text-gray-100 border-b border-l border-r border-gray-400 z-50 pointer-events-auto rounded-b-md px-2 h-9 hidden md:flex items-center text-center">
       <p class="font-mono">{{ page }} / {{ numPages }}</p>
     </div>
-    <div class="absolute top-0 right-40 bg-bg text-gray-100 border-b border-l border-r border-gray-400 z-20 rounded-b-md px-2 h-9 hidden md:flex items-center text-center">
+    <div class="absolute top-0 right-40 bg-bg text-gray-100 border-b border-l border-r border-gray-400 z-50 pointer-events-auto rounded-b-md px-2 h-9 hidden md:flex items-center text-center">
       <ui-icon-btn icon="zoom_out" :size="8" :disabled="!canScaleDown" borderless class="mr-px" @click="zoomOut" />
       <ui-icon-btn icon="zoom_in" :size="8" :disabled="!canScaleUp" borderless class="ml-px" @click="zoomIn" />
+      <div v-if="isNotesEnabled" class="w-px h-5 bg-gray-500 mx-1.5"></div>
+      <ui-icon-btn v-if="isNotesEnabled" :icon="isNoteStudioActive ? 'draw' : 'edit_off'" :size="8" :class="isNoteStudioActive ? 'text-amber-400' : 'text-gray-400'" borderless :title="isNoteStudioActive ? 'Disattiva Barra Strumenti Note' : 'Attiva Barra Strumenti Note'" @click="isNoteStudioActive = !isNoteStudioActive" />
     </div>
 
     <div :style="{ height: pdfHeight + 'px' }" class="overflow-hidden m-auto">
       <div class="flex items-center justify-center">
-        <div :style="{ width: pdfWidth + 'px', height: pdfHeight + 'px' }" class="overflow-auto">
+        <div :style="{ width: pdfWidth + 'px', height: pdfHeight + 'px' }" class="overflow-auto relative">
           <div v-if="loadedRatio > 0 && loadedRatio < 1" style="background-color: green; color: white; text-align: center" :style="{ width: loadedRatio * 100 + '%' }">{{ Math.floor(loadedRatio * 100) }}%</div>
-          <pdf v-if="pdfDocInitParams" ref="pdf" class="m-auto z-10 border border-black/20 shadow-md" :src="pdfDocInitParams" :page="page" :rotate="rotate" @progress="progressEvt" @error="error" @num-pages="numPagesLoaded" @link-clicked="page = $event" @loaded="loadedEvt"></pdf>
+          <div class="relative m-auto" :style="{ width: pdfWidth + 'px' }">
+            <pdf v-if="pdfDocInitParams" ref="pdf" class="m-auto z-10 border border-black/20 shadow-md" :src="pdfDocInitParams" :page="page" :rotate="rotate" @progress="progressEvt" @error="error" @num-pages="numPagesLoaded" @link-clicked="page = $event" @loaded="loadedEvt"></pdf>
+            <!-- Studio Note Digitale ancorato alla pagina PDF (si ridimensiona e scala col testo) -->
+            <note-studio-overlay :active="isNotesEnabled && isNoteStudioActive" :item-id="libraryItemId" :page-key="page" />
+          </div>
         </div>
       </div>
     </div>
@@ -32,10 +38,12 @@
 
 <script>
 import pdf from '@teckel/vue-pdf'
+import NoteStudioOverlay from '@/components/notes/NoteStudioOverlay.vue'
 
 export default {
   components: {
-    pdf
+    pdf,
+    NoteStudioOverlay
   },
   props: {
     libraryItem: {
@@ -48,6 +56,7 @@ export default {
   },
   data() {
     return {
+      isNoteStudioActive: true,
       windowWidth: 0,
       windowHeight: 0,
       scale: 1,
@@ -65,6 +74,11 @@ export default {
     },
     libraryItemId() {
       return this.libraryItem?.id
+    },
+    isNotesEnabled() {
+      const libId = this.libraryItem?.libraryId || (this.$store.state.selectedLibraryItem && this.$store.state.selectedLibraryItem.libraryId)
+      if (!libId) return true
+      return this.$store.getters['libraries/isLibraryNotesEnabled'](libId)
     },
     fitToPageWidth() {
       return this.pdfHeight * 0.6

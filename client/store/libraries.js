@@ -63,6 +63,16 @@ export const getters = {
   getLibraryEpubsAllowScriptedContent: (state, getters) => {
     return !!getters.getCurrentLibrarySettings?.epubsAllowScriptedContent
   },
+  getLibraryNotesEnabled: (state, getters) => {
+    if (!getters.getCurrentLibrarySettings) return true
+    return getters.getCurrentLibrarySettings.enableNotes !== false
+  },
+  isLibraryNotesEnabled: (state) => (libraryId) => {
+    if (!libraryId) return true
+    const lib = state.libraries.find((l) => l.id === libraryId)
+    if (!lib || !lib.settings) return true
+    return lib.settings.enableNotes !== false
+  },
   getCollection: (state) => (id) => {
     return state.collections.find((c) => c.id === id)
   },

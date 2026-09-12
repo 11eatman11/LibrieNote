@@ -61,7 +61,8 @@ class Library extends Model {
         autoScanCronExpression: null,
         podcastSearchRegion: 'us',
         markAsFinishedPercentComplete: null,
-        markAsFinishedTimeRemaining: 10
+        markAsFinishedTimeRemaining: 10,
+        enableNotes: true
       }
     } else {
       return {
@@ -72,6 +73,7 @@ class Library extends Model {
         skipMatchingMediaWithIsbn: false,
         audiobooksOnly: false,
         epubsAllowScriptedContent: false,
+        enableNotes: true,
         hideSingleBookSeries: false,
         onlyShowLaterBooksInContinueSeries: false,
         metadataPrecedence: this.defaultMetadataPrecedence,

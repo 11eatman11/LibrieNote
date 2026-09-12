@@ -1,10 +1,13 @@
 <template>
-  <div class="w-full h-full">
+  <div class="w-full h-full relative">
     <div class="h-full max-h-full w-full">
       <div class="ebook-viewer absolute overflow-y-scroll left-0 right-0 top-16 w-full max-w-4xl m-auto z-10 border border-black/20 shadow-md bg-white">
         <iframe title="html-viewer" width="100%"> Loading </iframe>
       </div>
     </div>
+
+    <!-- Studio Note Digitale per MOBI / AZW3 -->
+    <note-studio-overlay :active="isNotesEnabled && isNoteStudioActive" :item-id="libraryItemId" page-key="1" />
   </div>
 </template>
 
@@ -12,15 +15,23 @@
 import MobiParser from '@/assets/ebooks/mobi.js'
 import HtmlParser from '@/assets/ebooks/htmlParser.js'
 import defaultCss from '@/assets/ebooks/basic.js'
+import NoteStudioOverlay from '@/components/notes/NoteStudioOverlay.vue'
 
 export default {
+  components: {
+    NoteStudioOverlay
+  },
   props: {
     libraryItem: {
       type: Object,
       default: () => {}
     },
     playerOpen: Boolean,
-    fileId: String
+    fileId: String,
+    isNoteStudioActive: {
+      type: Boolean,
+      default: true
+    }
   },
   data() {
     return {}
@@ -28,6 +39,11 @@ export default {
   computed: {
     libraryItemId() {
       return this.libraryItem?.id
+    },
+    isNotesEnabled() {
+      const libId = this.libraryItem?.libraryId || (this.$store.state.selectedLibraryItem && this.$store.state.selectedLibraryItem.libraryId)
+      if (!libId) return true
+      return this.$store.getters['libraries/isLibraryNotesEnabled'](libId)
     },
     ebookUrl() {
       if (this.fileId) {

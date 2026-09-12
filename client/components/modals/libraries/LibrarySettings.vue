@@ -72,6 +72,15 @@
           </ui-tooltip>
         </div>
       </div>
+      <div class="flex items-center p-2 w-full md:w-1/2">
+        <ui-toggle-switch v-model="enableNotes" size="sm" @input="formUpdated" />
+        <ui-tooltip :text="$strings.LabelSettingsEnableNotesHelp">
+          <p class="pl-4 text-sm">
+            {{ $strings.LabelSettingsEnableNotes }}
+            <span class="material-symbols icon-text text-sm">info</span>
+          </p>
+        </ui-tooltip>
+      </div>
       <div v-if="isPodcastLibrary" class="p-2 w-full md:w-1/2">
         <ui-dropdown :label="$strings.LabelPodcastSearchRegion" v-model="podcastSearchRegion" :items="$podcastSearchRegionOptions" small class="max-w-72" menu-max-height="200px" @input="formUpdated" />
       </div>
@@ -110,6 +119,7 @@ export default {
       skipMatchingMediaWithIsbn: false,
       audiobooksOnly: false,
       epubsAllowScriptedContent: false,
+      enableNotes: true,
       hideSingleBookSeries: false,
       onlyShowLaterBooksInContinueSeries: false,
       podcastSearchRegion: 'us',
@@ -168,6 +178,7 @@ export default {
           skipMatchingMediaWithIsbn: !!this.skipMatchingMediaWithIsbn,
           audiobooksOnly: !!this.audiobooksOnly,
           epubsAllowScriptedContent: !!this.epubsAllowScriptedContent,
+          enableNotes: this.enableNotes !== false,
           hideSingleBookSeries: !!this.hideSingleBookSeries,
           onlyShowLaterBooksInContinueSeries: !!this.onlyShowLaterBooksInContinueSeries,
           podcastSearchRegion: this.podcastSearchRegion,
@@ -186,6 +197,7 @@ export default {
       this.skipMatchingMediaWithIsbn = !!this.librarySettings.skipMatchingMediaWithIsbn
       this.audiobooksOnly = !!this.librarySettings.audiobooksOnly
       this.epubsAllowScriptedContent = !!this.librarySettings.epubsAllowScriptedContent
+      this.enableNotes = this.librarySettings.enableNotes !== false
       this.hideSingleBookSeries = !!this.librarySettings.hideSingleBookSeries
       this.onlyShowLaterBooksInContinueSeries = !!this.librarySettings.onlyShowLaterBooksInContinueSeries
       this.podcastSearchRegion = this.librarySettings.podcastSearchRegion || 'us'

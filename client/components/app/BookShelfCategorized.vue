@@ -3,6 +3,62 @@
     <!-- Cover size widget -->
     <widgets-cover-size-widget class="fixed right-4 z-50" :style="{ bottom: streamLibraryItem ? '181px' : '16px' }" />
 
+    <!-- Sezione Note & Appunti Personali (Home) -->
+    <div v-if="!search && isNotesEnabled" class="w-full px-4 sm:px-8 pt-4 pb-2 select-none">
+      <div class="flex items-center justify-between mb-2.5">
+        <div class="flex items-center space-x-2">
+          <span class="material-symbols text-xl text-blue-400">edit_note</span>
+          <h2 class="font-bold text-base sm:text-lg text-gray-100">Le Mie Note & Appunti</h2>
+        </div>
+        <nuxt-link
+          :to="`/library/${currentLibraryId}/bookshelf/collections?tab=notes`"
+          class="text-xs text-blue-400 hover:text-blue-300 font-medium flex items-center space-x-1"
+        >
+          <span>Tutte le Note & Cartelle</span>
+          <span class="material-symbols text-sm">arrow_forward</span>
+        </nuxt-link>
+      </div>
+
+      <!-- Carousel rapido note -->
+      <div class="flex items-center space-x-3 overflow-x-auto pb-3">
+        <!-- + Nuova Nota Button Card -->
+        <button
+          type="button"
+          class="flex-shrink-0 w-44 h-28 rounded-2xl border-2 border-dashed border-gray-700 hover:border-blue-500 bg-gray-900/60 hover:bg-blue-600/10 transition-all flex flex-col items-center justify-center p-3 text-center group cursor-pointer"
+          @click="showCreateNoteModal = true"
+        >
+          <div class="w-8 h-8 rounded-xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform mb-1.5">
+            <span class="material-symbols text-xl">note_add</span>
+          </div>
+          <span class="font-bold text-xs text-white group-hover:text-blue-300 transition">+ Nuova Nota</span>
+          <span class="text-xxs text-gray-400">Taccuino personale</span>
+        </button>
+
+        <!-- Schede delle note recenti dell'utente -->
+        <div
+          v-for="note in userNotes.slice(0, 8)"
+          :key="note.id"
+          class="flex-shrink-0 w-44 h-28 rounded-2xl bg-gray-900/90 border border-gray-800 hover:border-blue-500/60 p-3 flex flex-col justify-between transition-all group hover:shadow-lg hover:-translate-y-0.5 cursor-pointer relative"
+          @click="openNotebook(note)"
+        >
+          <div class="flex items-start justify-between">
+            <span class="material-symbols text-base text-blue-400">description</span>
+            <span class="px-1.5 py-0.5 rounded text-xxs font-medium bg-black/40 text-gray-400 border border-white/5">
+              {{ formatNoteDate(note.updatedAt || note.createdAt) }}
+            </span>
+          </div>
+          <div>
+            <h3 class="font-bold text-xs text-white group-hover:text-blue-300 transition truncate">{{ note.title || 'Nuova Nota' }}</h3>
+            <span class="text-xxs text-gray-500">{{ getTemplateLabel(note.sheetStyle?.template) }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modali Note -->
+    <create-note-modal v-model="showCreateNoteModal" @created="onNoteCreated" />
+    <note-studio-notebook-modal v-model="showNotebookModal" :notebook="activeNotebook" @updated="loadUserNotes" @closed="loadUserNotes" @note-created="onNoteCreated" />
+
     <div v-if="loaded && !shelves.length && !search" class="w-full flex flex-col items-center justify-center py-12">
       <p class="text-center text-2xl mb-4 py-4">{{ $getString('MessageXLibraryIsEmpty', [libraryName]) }}</p>
       <div v-if="userIsAdminOrUp" class="flex">
@@ -31,7 +87,15 @@
 </template>
 
 <script>
+import CreateNoteModal from '@/components/notes/CreateNoteModal.vue'
+import NoteStudioNotebookModal from '@/components/notes/NoteStudioNotebookModal.vue'
+import { noteStorage } from '@/services/noteStorage'
+
 export default {
+  components: {
+    CreateNoteModal,
+    NoteStudioNotebookModal
+  },
   props: {
     search: Boolean,
     results: {
@@ -47,10 +111,17 @@ export default {
       wrapperClientWidth: 0,
       shelves: [],
       lastItemIndexSelected: -1,
-      tempIsScanning: false
+      tempIsScanning: false,
+      userNotes: [],
+      showCreateNoteModal: false,
+      showNotebookModal: false,
+      activeNotebook: null
     }
   },
   computed: {
+    userId() {
+      return this.$store.state.user.user?.id || 'default_user'
+    },
     supportedShelves() {
       return this.shelves.filter((shelf) => ['book', 'podcast', 'episode', 'series', 'authors', 'narrators'].includes(shelf.type))
     },
@@ -65,6 +136,9 @@ export default {
     },
     libraryName() {
       return this.$store.getters['libraries/getCurrentLibraryName']
+    },
+    isNotesEnabled() {
+      return this.$store.getters['libraries/getLibraryNotesEnabled']
     },
     isAlternativeBookshelfView() {
       return this.$store.getters['getHomeBookshelfView'] === this.$constants.BookshelfView.DETAIL
@@ -485,6 +559,37 @@ export default {
         console.error('Error socket not initialized')
       }
     },
+    async loadUserNotes() {
+      if (this.userId) {
+        this.userNotes = await noteStorage.getUserNotebooks(this.userId)
+      }
+    },
+    openNotebook(note) {
+      this.activeNotebook = note
+      this.showNotebookModal = true
+    },
+    onNoteCreated(note) {
+      this.loadUserNotes()
+      this.openNotebook(note)
+    },
+    formatNoteDate(timestamp) {
+      if (!timestamp) return ''
+      const date = new Date(timestamp)
+      return date.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })
+    },
+    getTemplateLabel(tpl) {
+      const map = {
+        blank: 'Bianco',
+        ruled: 'Righe',
+        ruled_narrow: 'Righe Strette',
+        grid: 'Quadretti',
+        music: 'Pentagramma',
+        cornell: 'Cornell',
+        millimeter: 'Millimetrata',
+        dot: 'Puntinato'
+      }
+      return map[tpl] || 'Nota'
+    },
     removeListeners() {
       if (this.$root.socket) {
         this.$root.socket.off('user_updated', this.userUpdated)
@@ -506,6 +611,7 @@ export default {
   mounted() {
     this.initListeners()
     this.init()
+    this.loadUserNotes()
   },
   beforeDestroy() {
     this.removeListeners()

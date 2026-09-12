@@ -594,6 +594,8 @@
   "LabelSettingsEnableWatcher": "Automatically watch libraries for changes",
   "LabelSettingsEnableWatcherForLibrary": "Automatically watch library for changes",
   "LabelSettingsEnableWatcherHelp": "Enables the automatic adding/updating of items when file changes are detected. *Requires server restart",
+  "LabelSettingsEnableNotes": "Enable Notes & Annotations",
+  "LabelSettingsEnableNotesHelp": "When enabled, activates Note Studio, highlighter, notebooks and digital annotations for items in this library. When disabled, notes are hidden and unavailable.",
   "LabelSettingsEpubsAllowScriptedContent": "Allow scripted content in epubs",
   "LabelSettingsEpubsAllowScriptedContentHelp": "Allow epub files to execute scripts. It is recommended to keep this setting disabled unless you trust the source of the epub files.",
   "LabelSettingsExperimentalFeatures": "Experimental features",

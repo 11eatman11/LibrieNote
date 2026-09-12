@@ -1,12 +1,43 @@
 <template>
   <div class="page" :class="streamLibraryItem ? 'streaming' : ''">
     <app-book-shelf-toolbar :page="id || ''" />
-    <app-lazy-bookshelf :page="id || ''" />
+
+    <!-- Tab Switcher per Raccolte Libri vs Note & Taccuini Personali -->
+    <div v-if="id === 'collections' && isNotesEnabled" class="w-full bg-bg border-b border-gray-800 px-4 sm:px-8 py-2 flex items-center space-x-3">
+      <button
+        type="button"
+        class="px-4 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5"
+        :class="activeCollectionTab === 'collections' ? 'bg-primary text-white shadow' : 'bg-gray-800/80 text-gray-400 hover:text-white hover:bg-gray-700'"
+        @click="setTab('collections')"
+      >
+        <span class="material-symbols text-sm">&#xe431;</span>
+        <span>Raccolte Libri</span>
+      </button>
+
+      <button
+        type="button"
+        class="px-4 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5"
+        :class="activeCollectionTab === 'notes' ? 'bg-blue-600 text-white shadow' : 'bg-gray-800/80 text-gray-400 hover:text-white hover:bg-gray-700'"
+        @click="setTab('notes')"
+      >
+        <span class="material-symbols text-sm">edit_note</span>
+        <span>Note & Taccuini Personali</span>
+      </button>
+    </div>
+
+    <!-- Vista Note Personali con Cartelle e Sottocartelle -->
+    <notes-collections-view v-if="id === 'collections' && activeCollectionTab === 'notes' && isNotesEnabled" />
+    <app-lazy-bookshelf v-else :page="id || ''" />
   </div>
 </template>
 
 <script>
+import NotesCollectionsView from '@/components/notes/NotesCollectionsView.vue'
+
 export default {
+  components: {
+    NotesCollectionsView
+  },
   async asyncData({ params, query, store, redirect }) {
     var libraryId = params.library
     var libraryData = await store.dispatch('libraries/fetch', libraryId)
@@ -37,13 +68,39 @@ export default {
     }
   },
   data() {
-    return {}
+    return {
+      activeCollectionTab: this.$route.query.tab === 'notes' ? 'notes' : 'collections'
+    }
+  },
+  watch: {
+    '$route.query.tab'(val) {
+      this.activeCollectionTab = val === 'notes' && this.isNotesEnabled ? 'notes' : 'collections'
+    },
+    isNotesEnabled(enabled) {
+      if (!enabled && this.activeCollectionTab === 'notes') {
+        this.setTab('collections')
+      }
+    }
   },
   computed: {
     streamLibraryItem() {
       return this.$store.state.streamLibraryItem
+    },
+    isNotesEnabled() {
+      return this.$store.getters['libraries/getLibraryNotesEnabled']
     }
   },
-  methods: {}
+  methods: {
+    setTab(tab) {
+      this.activeCollectionTab = tab
+      const query = { ...this.$route.query }
+      if (tab === 'notes') {
+        query.tab = 'notes'
+      } else {
+        delete query.tab
+      }
+      this.$router.replace({ query })
+    }
+  }
 }
 </script>

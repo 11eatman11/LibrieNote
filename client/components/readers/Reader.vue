@@ -1,15 +1,18 @@
 <template>
   <div v-if="show" id="reader" :data-theme="ereaderTheme" class="group absolute top-0 left-0 w-full z-60 data-[theme=dark]:bg-primary data-[theme=dark]:text-white data-[theme=light]:bg-white data-[theme=light]:text-black data-[theme=sepia]:bg-[rgb(244,236,216)] data-[theme=sepia]:text-[#5b4636]" :class="{ 'reader-player-open': !!streamLibraryItem }">
-    <div class="absolute top-4 left-4 z-20 flex items-center">
+    <div class="absolute top-4 left-4 z-50 pointer-events-auto flex items-center">
       <button v-if="isEpub" @click="toggleToC" type="button" aria-label="Table of contents menu" class="inline-flex opacity-80 hover:opacity-100">
         <span class="material-symbols text-2xl">menu</span>
       </button>
       <button v-if="hasSettings" @click="openSettings" type="button" aria-label="Ereader settings" class="mx-4 inline-flex opacity-80 hover:opacity-100">
         <span class="material-symbols text-1.5xl">settings</span>
       </button>
+      <button v-if="notesEnabled" @click="isNoteStudioActive = !isNoteStudioActive" type="button" aria-label="Attiva o disattiva Studio Note" class="inline-flex opacity-80 hover:opacity-100 transition-colors" :class="isNoteStudioActive ? 'text-amber-400' : 'text-gray-300'" :title="isNoteStudioActive ? 'Disattiva Studio Note' : 'Attiva Studio Note'">
+        <span class="material-symbols text-2xl">{{ isNoteStudioActive ? 'draw' : 'edit_off' }}</span>
+      </button>
     </div>
 
-    <div class="absolute top-4 left-1/2 transform -translate-x-1/2">
+    <div class="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 pointer-events-auto">
       <h1 :data-type="ebookType" class="text-lg sm:text-xl md:text-2xl mb-1 data-[type=comic]:hidden" style="line-height: 1.15; font-weight: 100">
         <span style="font-weight: 600">{{ abTitle }}</span>
         <span v-if="abAuthor" class="hidden md:inline"> – </span>
@@ -17,19 +20,19 @@
       </h1>
     </div>
 
-    <div class="absolute top-4 right-4 z-20">
+    <div class="absolute top-4 right-4 z-50 pointer-events-auto">
       <button @click="close" type="button" aria-label="Close ereader" class="inline-flex opacity-80 hover:opacity-100">
         <span class="material-symbols text-2xl">close</span>
       </button>
     </div>
 
-    <component v-if="componentName" ref="readerComponent" :is="componentName" :library-item="selectedLibraryItem" :player-open="!!streamLibraryItem" :keep-progress="keepProgress" :file-id="ebookFileId" @touchstart="touchstart" @touchend="touchend" @hook:mounted="readerMounted" />
+    <component v-if="componentName" ref="readerComponent" :is="componentName" :library-item="selectedLibraryItem" :player-open="!!streamLibraryItem" :keep-progress="keepProgress" :file-id="ebookFileId" :is-note-studio-active="notesEnabled && isNoteStudioActive" @touchstart="touchstart" @touchend="touchend" @hook:mounted="readerMounted" />
 
     <!-- TOC side nav -->
-    <div v-if="tocOpen" class="w-full h-full overflow-y-scroll absolute inset-0 bg-black/20 z-20" @click.stop.prevent="toggleToC"></div>
+    <div v-if="tocOpen" class="w-full h-full overflow-y-scroll absolute inset-0 bg-black/20 z-50 pointer-events-auto" @click.stop.prevent="toggleToC"></div>
     <div
       v-if="isEpub"
-      class="w-96 h-full max-h-full absolute top-0 left-0 shadow-xl transition-transform z-30 group-data-[theme=dark]:bg-primary group-data-[theme=dark]:text-white group-data-[theme=light]:bg-white group-data-[theme=light]:text-black group-data-[theme=sepia]:bg-[rgb(244,236,216)] group-data-[theme=sepia]:text-[#5b4636]"
+      class="w-96 h-full max-h-full absolute top-0 left-0 shadow-xl transition-transform z-60 pointer-events-auto group-data-[theme=dark]:bg-primary group-data-[theme=dark]:text-white group-data-[theme=light]:bg-white group-data-[theme=light]:text-black group-data-[theme=sepia]:bg-[rgb(244,236,216)] group-data-[theme=sepia]:text-[#5b4636]"
       :class="tocOpen ? 'translate-x-0' : '-translate-x-96'"
       @click.stop.prevent
     >
@@ -124,6 +127,7 @@
 export default {
   data() {
     return {
+      isNoteStudioActive: true,
       touchstartX: 0,
       touchstartY: 0,
       touchendX: 0,
@@ -237,6 +241,10 @@ export default {
     },
     libraryId() {
       return this.selectedLibraryItem.libraryId
+    },
+    notesEnabled() {
+      if (!this.libraryId) return true
+      return this.$store.getters['libraries/isLibraryNotesEnabled'](this.libraryId)
     },
     folderId() {
       return this.selectedLibraryItem.folderId

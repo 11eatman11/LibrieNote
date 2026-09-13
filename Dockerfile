@@ -1,7 +1,15 @@
 ARG NUSQLITE3_DIR="/usr/local/lib/nusqlite3"
 ARG NUSQLITE3_PATH="${NUSQLITE3_DIR}/libnusqlite3.so"
 
-### STAGE 1: Build server dependencies ###
+### STAGE 1: Build client frontend ###
+FROM node:20-alpine AS build-client
+WORKDIR /client
+COPY client/package*.json ./
+RUN npm ci
+COPY client/ ./
+RUN npm run generate
+
+### STAGE 2: Build server dependencies ###
 FROM node:20-alpine AS build-server
 
 ARG NUSQLITE3_DIR
@@ -34,7 +42,7 @@ RUN ARCH=$(uname -m) && \
 
 RUN npm ci --only=production
 
-### STAGE 2: Create minimal runtime image ###
+### STAGE 3: Create minimal runtime image ###
 FROM node:20-alpine
 
 ARG NUSQLITE3_DIR
@@ -48,8 +56,8 @@ RUN apk add --no-cache --update \
 
 WORKDIR /app
 
-# Copy pre-compiled frontend and server from build stages
-COPY /client/dist /app/client/dist
+# Copy compiled frontend and server from build stages
+COPY --from=build-client /client/dist /app/client/dist
 COPY --from=build-server /server /app
 COPY --from=build-server ${NUSQLITE3_PATH} ${NUSQLITE3_PATH}
 

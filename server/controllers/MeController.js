@@ -632,7 +632,9 @@ class MeController {
    */
   async getNotesSync(req, res) {
     try {
-      const filePath = getUserNotesPath(req.user.id)
+      const userId = req.user?.id || (req.query && req.query.userId) || 'default_user'
+      Logger.info(`[MeController] getNotesSync requested for user: ${userId}`)
+      const filePath = getUserNotesPath(userId)
       if (fs.existsSync(filePath)) {
         const data = await fs.readJson(filePath)
         return res.json({
@@ -672,15 +674,17 @@ class MeController {
           body = {}
         }
       }
+      const userId = req.user?.id || body.userId || (req.query && req.query.userId) || 'default_user'
+      Logger.info(`[MeController] syncNotes requested for user: ${userId}`)
       const { notebooks = [], folders = [], notes = [] } = body
-      const filePath = getUserNotesPath(req.user.id)
+      const filePath = getUserNotesPath(userId)
 
       let serverData = { notebooks: [], folders: [], notes: [], lastSyncedAt: 0 }
       if (fs.existsSync(filePath)) {
         try {
           serverData = await fs.readJson(filePath)
         } catch (e) {
-          Logger.warn(`[MeController] Corrupted notes file for user ${req.user.id}, creating fresh`)
+          Logger.warn(`[MeController] Corrupted notes file for user ${userId}, creating fresh`)
         }
       }
 
@@ -693,7 +697,7 @@ class MeController {
         if (!item || !item.id) return
         const existing = nbMap.get(item.id)
         if (!existing || (item.updatedAt || 0) >= (existing.updatedAt || 0)) {
-          nbMap.set(item.id, { ...item, userId: req.user.id })
+          nbMap.set(item.id, { ...item, userId })
         }
       })
       const mergedNotebooks = Array.from(nbMap.values()).filter((n) => !n.isDeleted)
@@ -707,7 +711,7 @@ class MeController {
         if (!item || !item.id) return
         const existing = fldMap.get(item.id)
         if (!existing || (item.updatedAt || 0) >= (existing.updatedAt || 0)) {
-          fldMap.set(item.id, { ...item, userId: req.user.id })
+          fldMap.set(item.id, { ...item, userId })
         }
       })
       const mergedFolders = Array.from(fldMap.values()).filter((f) => !f.isDeleted)
@@ -735,10 +739,12 @@ class MeController {
 
       await fs.writeJson(filePath, mergedData, { spaces: 2 })
 
-      try {
-        SocketAuthority.clientEmitter(req.user.id, 'notes_updated', mergedData)
-      } catch (e) {
-        Logger.warn(`[MeController] Failed to emit notes_updated event: ${e.message}`)
+      if (req.user?.id) {
+        try {
+          SocketAuthority.clientEmitter(req.user.id, 'notes_updated', mergedData)
+        } catch (e) {
+          Logger.warn(`[MeController] Failed to emit notes_updated event: ${e.message}`)
+        }
       }
 
       return res.json({
@@ -761,10 +767,10 @@ class MeController {
  * @returns {string}
  */
 function getUserNotesPath(userId) {
-  const notesDir = Path.join(global.MetadataPath || Path.join(__dirname, '../metadata'), 'notes')
+  const notesDir = Path.join(global.MetadataPath || Path.join(global.appRoot || __dirname, 'metadata'), 'notes')
   if (!fs.existsSync(notesDir)) {
     try {
-      fs.mkdirpSync(notesDir)
+      fs.ensureDirSync(notesDir)
     } catch (err) {
       Logger.error(`[MeController] Failed to create notes directory: ${err.message}`)
     }

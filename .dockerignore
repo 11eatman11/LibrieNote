@@ -1,5 +1,5 @@
 .env
-node_modules
+**/node_modules
 npm-debug.log
 .git
 .gitignore
@@ -11,6 +11,4 @@ npm-debug.log
 dev.js
 test/
 /client/.nuxt/
-/client/dist/
-/dist/
 /deploy/

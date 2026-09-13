@@ -24,6 +24,18 @@
           <button v-if="searchQuery" type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white" @click="searchQuery = ''">✕</button>
         </div>
 
+        <!-- Sincronizza con NAS Button -->
+        <button
+          type="button"
+          class="px-3 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 active:bg-gray-600 text-gray-200 hover:text-white font-semibold text-xs flex items-center space-x-1.5 transition border border-gray-700 shadow"
+          :class="{ 'opacity-60 pointer-events-none': isSyncing }"
+          @click="triggerSync"
+          title="Sincronizza note con il server NAS"
+        >
+          <span class="material-symbols text-base text-blue-400" :class="{ 'animate-spin': isSyncing }">sync</span>
+          <span class="hidden md:inline">{{ isSyncing ? 'Sincronizzazione...' : 'Sincronizza NAS' }}</span>
+        </button>
+
         <!-- + Nuova Cartella Button -->
         <button
           type="button"
@@ -331,6 +343,7 @@ export default {
       notes: [],
       folders: [],
       searchQuery: '',
+      isSyncing: false,
       showCreateNoteModal: false,
       showNotebookModal: false,
       activeNotebook: null,
@@ -391,12 +404,34 @@ export default {
     }
   },
   mounted() {
-    this.loadAllData()
+    this.loadAllData(true)
   },
   methods: {
-    async loadAllData() {
+    async loadAllData(andSync = false) {
       this.notes = await noteStorage.getUserNotebooks(this.userId)
       this.folders = await noteStorage.getUserFolders(this.userId)
+      if (andSync) {
+        this.triggerSync(false)
+      }
+    },
+    async triggerSync(showToast = true) {
+      if (this.isSyncing) return
+      this.isSyncing = true
+      try {
+        const client = this.$nativeHttp || this.$axios
+        const res = await noteStorage.syncWithServer(this.userId, client)
+        if (res && res.success) {
+          this.notes = await noteStorage.getUserNotebooks(this.userId)
+          this.folders = await noteStorage.getUserFolders(this.userId)
+          if (showToast) this.$toast.success('Note sincronizzate con il NAS')
+        } else if (res && res.offline) {
+          if (showToast) this.$toast.info('Modalità offline attiva: le note verranno sincronizzate appena connesso')
+        }
+      } catch (err) {
+        console.warn('Errore sync:', err)
+      } finally {
+        this.isSyncing = false
+      }
     },
     navigateToFolder(folderId) {
       this.currentFolderId = folderId
@@ -408,6 +443,7 @@ export default {
     },
     onNoteCreated(newNote) {
       this.loadAllData()
+      this.triggerSync(false)
       this.openNotebook(newNote)
     },
     openNotebook(note) {
@@ -442,21 +478,24 @@ export default {
         this.$toast.success('Cartella creata')
       }
       this.showFolderModal = false
-      this.loadAllData()
+      await this.loadAllData()
+      this.triggerSync(false)
     },
     async deleteFolder(folder) {
       if (confirm(`Sei sicuro di voler eliminare la cartella "${folder.name}"? Le note contenute non verranno eliminate.`)) {
         await noteStorage.deleteFolder(this.userId, folder.id)
         this.$toast.success('Cartella eliminata')
-        this.loadAllData()
+        await this.loadAllData()
+        this.triggerSync(false)
       }
     },
     promptRenameNote(note) {
       const newTitle = prompt('Modifica titolo nota:', note.title)
       if (newTitle && newTitle.trim()) {
-        noteStorage.updateNotebook(this.userId, note.id, { title: newTitle.trim() }).then(() => {
+        noteStorage.updateNotebook(this.userId, note.id, { title: newTitle.trim() }).then(async () => {
           this.$toast.success('Titolo aggiornato')
-          this.loadAllData()
+          await this.loadAllData()
+          this.triggerSync(false)
         })
       }
     },
@@ -469,13 +508,15 @@ export default {
       await noteStorage.updateNotebook(this.userId, this.movingNote.id, { folderId: this.targetFolderId })
       this.$toast.success('Nota spostata')
       this.movingNote = null
-      this.loadAllData()
+      await this.loadAllData()
+      this.triggerSync(false)
     },
     async deleteNote(note) {
       if (confirm(`Sei sicuro di voler eliminare la nota "${note.title}"?`)) {
         await noteStorage.deleteNotebook(this.userId, note.id)
         this.$toast.success('Nota eliminata')
-        this.loadAllData()
+        await this.loadAllData()
+        this.triggerSync(false)
       }
     },
     countNotesInFolder(folderId) {
@@ -514,6 +555,7 @@ export default {
     },
     async handleNoteCreated(newNote) {
       await this.loadAllData()
+      this.triggerSync(false)
       if (newNote) {
         this.activeNotebook = newNote
         this.showNotebookModal = true

@@ -562,6 +562,13 @@ export default {
     async loadUserNotes() {
       if (this.userId) {
         this.userNotes = await noteStorage.getUserNotebooks(this.userId)
+        noteStorage.syncWithServer(this.userId, this.$axios).then((res) => {
+          if (res && res.success) {
+            noteStorage.getUserNotebooks(this.userId).then((nbs) => {
+              this.userNotes = nbs
+            })
+          }
+        })
       }
     },
     openNotebook(note) {

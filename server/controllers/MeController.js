@@ -1,3 +1,5 @@
+const Path = require('path')
+const fs = require('../libs/fsExtra')
 const { Request, Response } = require('express')
 const { Op } = require('sequelize')
 const Logger = require('../Logger')
@@ -611,6 +613,137 @@ class MeController {
     }
     const data = await userStats.getStatsForYear(req.user.id, year)
     res.json(data)
+  }
+
+  /**
+   * Helper to get user notes storage path
+   * @param {string} userId
+   * @returns {string}
+   */
+  _getUserNotesPath(userId) {
+    const notesDir = Path.join(global.MetadataPath || Path.join(__dirname, '../metadata'), 'notes')
+    if (!fs.existsSync(notesDir)) {
+      try {
+        fs.mkdirpSync(notesDir)
+      } catch (err) {
+        Logger.error(`[MeController] Failed to create notes directory: ${err.message}`)
+      }
+    }
+    return Path.join(notesDir, `${userId}.json`)
+  }
+
+  /**
+   * GET: /api/me/notes-sync
+   *
+   * @param {RequestWithUser} req
+   * @param {Response} res
+   */
+  async getNotesSync(req, res) {
+    try {
+      const filePath = this._getUserNotesPath(req.user.id)
+      if (fs.existsSync(filePath)) {
+        const data = await fs.readJson(filePath)
+        return res.json({
+          notebooks: data.notebooks || [],
+          folders: data.folders || [],
+          notes: data.notes || [],
+          lastSyncedAt: data.lastSyncedAt || Date.now()
+        })
+      }
+      return res.json({
+        notebooks: [],
+        folders: [],
+        notes: [],
+        lastSyncedAt: Date.now()
+      })
+    } catch (err) {
+      Logger.error(`[MeController] Error reading user notes sync: ${err.message}`)
+      return res.status(500).json({ error: 'Failed to read notes sync' })
+    }
+  }
+
+  /**
+   * POST: /api/me/notes-sync
+   *
+   * @param {RequestWithUser} req
+   * @param {Response} res
+   */
+  async syncNotes(req, res) {
+    try {
+      const { notebooks = [], folders = [], notes = [] } = req.body || {}
+      const filePath = this._getUserNotesPath(req.user.id)
+
+      let serverData = { notebooks: [], folders: [], notes: [], lastSyncedAt: 0 }
+      if (fs.existsSync(filePath)) {
+        try {
+          serverData = await fs.readJson(filePath)
+        } catch (e) {
+          Logger.warn(`[MeController] Corrupted notes file for user ${req.user.id}, creating fresh`)
+        }
+      }
+
+      // Merge notebooks
+      const nbMap = new Map()
+      ;(serverData.notebooks || []).forEach((item) => {
+        if (item && item.id) nbMap.set(item.id, item)
+      })
+      ;(notebooks || []).forEach((item) => {
+        if (!item || !item.id) return
+        const existing = nbMap.get(item.id)
+        if (!existing || (item.updatedAt || 0) >= (existing.updatedAt || 0)) {
+          nbMap.set(item.id, { ...item, userId: req.user.id })
+        }
+      })
+      const mergedNotebooks = Array.from(nbMap.values()).filter((n) => !n.isDeleted)
+
+      // Merge folders
+      const fldMap = new Map()
+      ;(serverData.folders || []).forEach((item) => {
+        if (item && item.id) fldMap.set(item.id, item)
+      })
+      ;(folders || []).forEach((item) => {
+        if (!item || !item.id) return
+        const existing = fldMap.get(item.id)
+        if (!existing || (item.updatedAt || 0) >= (existing.updatedAt || 0)) {
+          fldMap.set(item.id, { ...item, userId: req.user.id })
+        }
+      })
+      const mergedFolders = Array.from(fldMap.values()).filter((f) => !f.isDeleted)
+
+      // Merge notes/pages data
+      const noteMap = new Map()
+      ;(serverData.notes || []).forEach((item) => {
+        if (item && item.id) noteMap.set(item.id, item)
+      })
+      ;(notes || []).forEach((item) => {
+        if (!item || !item.id) return
+        const existing = noteMap.get(item.id)
+        if (!existing || (item.updatedAt || 0) >= (existing.updatedAt || 0)) {
+          noteMap.set(item.id, item)
+        }
+      })
+      const mergedNotes = Array.from(noteMap.values()).filter((n) => !n.isDeleted)
+
+      const mergedData = {
+        notebooks: mergedNotebooks,
+        folders: mergedFolders,
+        notes: mergedNotes,
+        lastSyncedAt: Date.now()
+      }
+
+      await fs.writeJson(filePath, mergedData, { spaces: 2 })
+
+      return res.json({
+        success: true,
+        notebooks: mergedNotebooks,
+        folders: mergedFolders,
+        notes: mergedNotes,
+        lastSyncedAt: mergedData.lastSyncedAt
+      })
+    } catch (err) {
+      Logger.error(`[MeController] Error syncing user notes: ${err.message}`)
+      return res.status(500).json({ error: 'Failed to sync user notes' })
+    }
   }
 }
 module.exports = new MeController()

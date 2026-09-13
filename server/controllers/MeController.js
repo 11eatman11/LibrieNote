@@ -670,7 +670,15 @@ class MeController {
    */
   async syncNotes(req, res) {
     try {
-      const { notebooks = [], folders = [], notes = [] } = req.body || {}
+      let body = req.body || {}
+      if (typeof body === 'string') {
+        try {
+          body = JSON.parse(body)
+        } catch (e) {
+          body = {}
+        }
+      }
+      const { notebooks = [], folders = [], notes = [] } = body
       const filePath = this._getUserNotesPath(req.user.id)
 
       let serverData = { notebooks: [], folders: [], notes: [], lastSyncedAt: 0 }

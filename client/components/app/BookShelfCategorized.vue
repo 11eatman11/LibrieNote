@@ -562,7 +562,8 @@ export default {
     async loadUserNotes() {
       if (this.userId) {
         this.userNotes = await noteStorage.getUserNotebooks(this.userId)
-        noteStorage.syncWithServer(this.userId, this.$axios).then((res) => {
+        const client = this.$nativeHttp || this.$axios
+        noteStorage.syncWithServer(this.userId, client).then((res) => {
           if (res && res.success) {
             noteStorage.getUserNotebooks(this.userId).then((nbs) => {
               this.userNotes = nbs
@@ -613,12 +614,14 @@ export default {
       } else {
         console.error('Error socket not initialized')
       }
+      this.$eventBus.$off('notes-synced', this.loadUserNotes)
     }
   },
   mounted() {
     this.initListeners()
     this.init()
     this.loadUserNotes()
+    this.$eventBus.$on('notes-synced', this.loadUserNotes)
   },
   beforeDestroy() {
     this.removeListeners()

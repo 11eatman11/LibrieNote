@@ -9,7 +9,6 @@
 /metadata/
 /plugins/
 /client/.nuxt/
-/client/dist/
 /dist/
 /deploy/
 /coverage/

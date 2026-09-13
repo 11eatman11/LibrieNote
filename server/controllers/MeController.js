@@ -621,15 +621,7 @@ class MeController {
    * @returns {string}
    */
   _getUserNotesPath(userId) {
-    const notesDir = Path.join(global.MetadataPath || Path.join(__dirname, '../metadata'), 'notes')
-    if (!fs.existsSync(notesDir)) {
-      try {
-        fs.mkdirpSync(notesDir)
-      } catch (err) {
-        Logger.error(`[MeController] Failed to create notes directory: ${err.message}`)
-      }
-    }
-    return Path.join(notesDir, `${userId}.json`)
+    return getUserNotesPath(userId)
   }
 
   /**
@@ -640,10 +632,11 @@ class MeController {
    */
   async getNotesSync(req, res) {
     try {
-      const filePath = this._getUserNotesPath(req.user.id)
+      const filePath = getUserNotesPath(req.user.id)
       if (fs.existsSync(filePath)) {
         const data = await fs.readJson(filePath)
         return res.json({
+          success: true,
           notebooks: data.notebooks || [],
           folders: data.folders || [],
           notes: data.notes || [],
@@ -651,6 +644,7 @@ class MeController {
         })
       }
       return res.json({
+        success: true,
         notebooks: [],
         folders: [],
         notes: [],
@@ -679,7 +673,7 @@ class MeController {
         }
       }
       const { notebooks = [], folders = [], notes = [] } = body
-      const filePath = this._getUserNotesPath(req.user.id)
+      const filePath = getUserNotesPath(req.user.id)
 
       let serverData = { notebooks: [], folders: [], notes: [], lastSyncedAt: 0 }
       if (fs.existsSync(filePath)) {
@@ -741,6 +735,12 @@ class MeController {
 
       await fs.writeJson(filePath, mergedData, { spaces: 2 })
 
+      try {
+        SocketAuthority.clientEmitter(req.user.id, 'notes_updated', mergedData)
+      } catch (e) {
+        Logger.warn(`[MeController] Failed to emit notes_updated event: ${e.message}`)
+      }
+
       return res.json({
         success: true,
         notebooks: mergedNotebooks,
@@ -754,4 +754,22 @@ class MeController {
     }
   }
 }
+
+/**
+ * Top-level helper function for user notes path
+ * @param {string} userId
+ * @returns {string}
+ */
+function getUserNotesPath(userId) {
+  const notesDir = Path.join(global.MetadataPath || Path.join(__dirname, '../metadata'), 'notes')
+  if (!fs.existsSync(notesDir)) {
+    try {
+      fs.mkdirpSync(notesDir)
+    } catch (err) {
+      Logger.error(`[MeController] Failed to create notes directory: ${err.message}`)
+    }
+  }
+  return Path.join(notesDir, `${userId || 'default_user'}.json`)
+}
+
 module.exports = new MeController()
